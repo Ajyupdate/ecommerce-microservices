@@ -1,0 +1,8 @@
+FROM node:18-alpine
+WORKDIR /app/seed
+COPY package.json .
+RUN npm install
+COPY customer-seeder.js .
+COPY product-seeder.js .
+COPY models ./models
+

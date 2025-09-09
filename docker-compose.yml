@@ -1,0 +1,190 @@
+services:
+  rabbitmq:
+    image: 'rabbitmq:3-management-alpine'
+    hostname: 'rabbitmq'
+    ports:
+      - "5672:5672"
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  customer_db:
+    image: mongo:6.0
+    container_name: customer_db
+    ports:
+      - "27022:27017"
+    volumes:
+      - customer_db_data:/data/db
+
+  product_db:
+    image: mongo:6.0
+    container_name: product_db
+    ports:
+      - "27023:27017"
+    volumes:
+      - product_db_data:/data/db
+
+  order_db:
+    image: mongo:6.0
+    container_name: order_db
+    ports:
+      - "27024:27017"
+    volumes:
+      - order_db_data:/data/db
+
+  transaction_db:
+    image: mongo:6.0
+    container_name: transaction_db
+    ports:
+      - "27025:27017"
+    volumes:
+      - transaction_db_data:/data/db
+
+  customer-service:
+    build:
+      context: ./services/customer-service
+      dockerfile: Dockerfile
+    container_name: customer-service
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      MONGODB_URI: mongodb://customer_db:27017/customer_db
+    volumes:
+      - ./services/customer-service/src:/app/src
+      - /app/node_modules
+    command: npm run dev
+    depends_on:
+      customer_db:
+        condition: service_started
+
+  product-service:
+    build:
+      context: ./services/product-service
+      dockerfile: Dockerfile
+    container_name: product-service
+    ports:
+      - "3002:3002"
+    environment:
+      PORT: 3002
+      MONGODB_URI: mongodb://product_db:27017/product_db
+    volumes:
+      - ./services/product-service/src:/app/src
+      - /app/node_modules
+    command: npm run dev
+    depends_on:
+      product_db:
+        condition: service_started
+
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    ports:
+      - "3003:3003"
+    environment:
+      PORT: 3003
+      MONGODB_URI: mongodb://order_db:27017/order_db
+      CUSTOMER_SERVICE_URL: http://customer-service:3001
+      PRODUCT_SERVICE_URL: http://product-service:3002
+      PAYMENT_SERVICE_URL: http://payment-service:3004
+    volumes:
+      - ./services/order-service/src:/app/src
+      - /app/node_modules
+    command: npm run dev
+    depends_on:
+      customer-service:
+        condition: service_started
+      product-service:
+        condition: service_started
+      order_db:
+        condition: service_started
+
+  payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile
+    container_name: payment-service
+    ports:
+      - "3004:3004"
+    environment:
+      PORT: 3004
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      TRANSACTION_QUEUE: transaction_queue
+    volumes:
+      - ./services/payment-service/src:/app/src
+      - /app/node_modules
+    command: npm run dev
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  queue-worker:
+    build:
+      context: ./services/queue-worker
+      dockerfile: Dockerfile
+    container_name: queue-worker
+    environment:
+      MONGODB_URI: mongodb://transaction_db:27017/transaction_db
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      TRANSACTION_QUEUE: transaction_queue
+      # Note: In a real-world scenario, the worker would ideally not directly connect to other service DBs.
+      # Instead, services would emit events for state changes, and the worker would react to those.
+      # For this simplified example, direct DB access is used.
+      MONGODB_URI_ORDER: mongodb://order_db:27017/order_db # For updating order status
+      MONGODB_URI_PRODUCT: mongodb://product_db:27017/product_db # For updating product stock
+    volumes:
+      - ./services/queue-worker/src:/app/src
+      - /app/node_modules
+    command: npm run dev
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      transaction_db:
+        condition: service_started
+      order_db:
+        condition: service_started
+      product_db:
+        condition: service_started
+
+  customer-seeder:
+    build:
+      context: ./seed
+      dockerfile: Dockerfile.seed
+    container_name: customer-seeder
+    command: node customer-seeder.js
+    environment:
+      MONGODB_URI_CUSTOMER: mongodb://customer_db:27017/customer_db
+    depends_on:
+      customer_db:
+        condition: service_started
+    profiles: [seed]
+
+  product-seeder:
+    build:
+      context: ./seed
+      dockerfile: Dockerfile.seed
+    container_name: product-seeder
+    command: node product-seeder.js
+    environment:
+      MONGODB_URI_PRODUCT: mongodb://product_db:27017/product_db
+    depends_on:
+      product_db:
+        condition: service_started
+    profiles: [seed]
+
+volumes:
+  rabbitmq_data:
+  customer_db_data:
+  product_db_data:
+  order_db_data:
+  transaction_db_data:

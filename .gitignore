@@ -1,0 +1,29 @@
+# Node.js
+node_modules/
+dist/
+build/
+.env
+
+# npm package files
+package-lock.json
+npm-debug.log*
+
+# Docker
+Dockerfile
+docker-compose.override.yml
+
+# IDEs
+.idea/
+.vscode/
+
+# Logs
+logs/
+*.log
+
+# Test reports
+coverage/
+.nyc_output/
+
+# OS generated files
+.DS_Store
+Thumbs.db

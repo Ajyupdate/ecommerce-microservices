@@ -1,0 +1,39 @@
+{
+  "name": "ecommerce-microservices",
+  "version": "1.0.0",
+  "description": "A comprehensive e-commerce microservices system",
+  "main": "index.js",
+  "scripts": {
+    "start:customer": "cd services/customer-service && npm start",
+    "start:product": "cd services/product-service && npm start",
+    "start:order": "cd services/order-service && npm start",
+    "start:payment": "cd services/payment-service && npm start",
+    "start:worker": "cd services/queue-worker && npm start",
+    "dev:customer": "cd services/customer-service && npm run dev",
+    "dev:product": "cd services/product-service && npm run dev",
+    "dev:order": "cd services/order-service && npm run dev",
+    "dev:payment": "cd services/payment-service && npm run dev",
+    "dev:worker": "cd services/queue-worker && npm run dev",
+    "test:customer": "cd services/customer-service && npm test",
+    "test:product": "cd services/product-service && npm test",
+    "test:order": "cd services/order-service && npm test",
+    "test:payment": "cd services/payment-service && npm test",
+    "test:worker": "cd services/queue-worker && npm test",
+    "seed:customers": "node ./seed/customer-seeder.js",
+    "seed:products": "node ./seed/product-seeder.js"
+  },
+  "keywords": [
+    "microservices",
+    "ecommerce",
+    "nodejs",
+    "express",
+    "mongodb",
+    "rabbitmq",
+    "docker"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
