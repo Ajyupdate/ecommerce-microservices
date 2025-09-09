@@ -16,8 +16,7 @@ This project implements a complete e-commerce microservices system using Node.js
 - [Folder Structure](#folder-structure)
 - [Communication Flow (Order Creation)](#communication-flow-order-creation)
 - [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
+
 
 ## Architecture
 The system is composed of several independent microservices, each responsible for a specific domain:
@@ -252,8 +251,4 @@ ecommerce-microservices/
 - **`npm install` failures:** Ensure Node.js version compatibility and correct `package.json` dependencies.
 - **Inter-service communication:** Double-check service URLs in `docker-compose.yml` (using service names, not `localhost`) and `.env` (using `localhost` for local dev).
 
-## Contributing
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
-## License
-ISC
