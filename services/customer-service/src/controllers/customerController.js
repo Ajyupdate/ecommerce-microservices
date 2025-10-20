@@ -16,7 +16,7 @@ exports.getCustomerById = async (req, res, next) => {
   try {
     const customer = await Customer.findOne({ customerId: req.params.customerId });
     if (!customer) {
-      return res.status(404).json({ message: 'Customer not foundttsssd11' });
+      return res.status(404).json({ message: 'Customer not found' });
     }
     res.status(200).json(customer);
   } catch (error) {

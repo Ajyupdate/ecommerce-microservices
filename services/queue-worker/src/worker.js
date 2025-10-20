@@ -3,7 +3,7 @@ const amqp = require('amqplib');
 const mongoose = require('mongoose');
 const Transaction = require('./models/transaction');
 const Order = require('./models/order');
-const Product = require('./models/product');
+// Product model will be set globally after connection
 
 const RABBITMQ_URI = process.env.RABBITMQ_URI || 'amqp://localhost';
 const TRANSACTION_QUEUE = process.env.TRANSACTION_QUEUE || 'transaction_queue';
@@ -14,10 +14,20 @@ const RETRY_DELAY = 5000; // 5 seconds
 
 async function connectDB() {
   try {
+    // Connect to transaction database
     await mongoose.connect(MONGODB_URI);
     console.log('Connected to transaction_db');
+    
+    // Connect to product database
+    const productConnection = await mongoose.createConnection(process.env.MONGODB_URI_PRODUCT);
+    console.log('Connected to product_db');
+    
+    // Create Product model with product connection
+    const Product = productConnection.model('Product', require('./models/product').schema);
+    global.Product = Product;  // Make it available globally
+    
   } catch (error) {
-    console.error('Could not connect to transaction_db...', error);
+    console.error('Could not connect to databases...', error);
     process.exit(1);
   }
 }
@@ -66,6 +76,7 @@ async function startWorker() {
             { orderStatus: 'completed', transactionId: transactionId },
             { new: true }
           );
+          console.log(order, "line 69")
           if (order) {
             console.log(`Order ${orderId} updated to completed.`);
           } else {
@@ -76,7 +87,7 @@ async function startWorker() {
           // Similar to order update, in a real system, product service would handle this via events.
           await Product.findOneAndUpdate(
             { productId: productId },
-            { $inc: { stock: -quantity } }, // Assuming quantity is available in transactionDetails
+            { $inc: { stock: -1 } },
             { new: true }
           );
           console.log(`Product ${productId} stock updated.`);

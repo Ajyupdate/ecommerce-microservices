@@ -9,7 +9,7 @@ const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost
 exports.createOrder = async (req, res, next) => {
   try {
     const { customerId, productId, quantity, amount } = req.body;
-    console.log(customerId, productId, quantity, amount, "line 1ff2")
+    console.log(customerId, productId, quantity, amount)
     // 1. Validate request data (basic validation)
     if (!customerId || !productId || !quantity || !amount) {
       const error = new Error('Missing required order fieldssss');
@@ -66,8 +66,8 @@ exports.createOrder = async (req, res, next) => {
 
     // 6. Return order response to customer
     // Update orderStatus to 'successful' since the order is now successful
-    console.log("successs 1")
-    newOrder.orderStatus = 'completed';
+    console.log("successs 1 test")
+    // newOrder.orderStatus = 'completed';
     await newOrder.save();
     res.status(201).json(newOrder);
   } catch (error) {
