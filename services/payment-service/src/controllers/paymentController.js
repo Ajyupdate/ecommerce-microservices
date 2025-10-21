@@ -8,6 +8,13 @@ const TRANSACTION_QUEUE = process.env.TRANSACTION_QUEUE || 'transaction_queue';
 exports.processPayment = async (req, res, next) => {
   try {
     const { customerId, orderId, productId, amount, paymentMethod } = req.body;
+    
+    // Validate required fields
+    if (!customerId || !orderId || !productId || !amount || !paymentMethod) {
+      const error = new Error('Missing required payment fields');
+      error.statusCode = 400;
+      return next(error);
+    }
 
     // Simulate payment processing logic
     const transactionId = uuidv4();
@@ -38,8 +45,12 @@ exports.processPayment = async (req, res, next) => {
     res.status(200).json({ message: 'Payment processed and transaction published.', transactionId });
   } catch (error) {
     console.error('Error processing payment or publishing to RabbitMQ:', error);
-    const err = new Error('Payment processing failed or queue connection error');
-    err.statusCode = 500;
-    next(err);
+    if (error.statusCode === 400) {
+      next(error);
+    } else {
+      const err = new Error('Payment processing failed or queue connection error');
+      err.statusCode = 500;
+      next(err);
+    }
   }
 };

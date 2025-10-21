@@ -1,0 +1,160 @@
+const request = require('supertest');
+const mongoose = require('mongoose');
+const nock = require('nock');
+const app = require('../../src/app');
+const Order = require('../../src/models/order');
+
+describe('Order Service Integration Tests', () => {
+  beforeAll(async () => {
+    process.env.NODE_ENV = 'test';
+    await mongoose.connect(process.env.TEST_MONGODB_URI || 'mongodb://localhost:27024/test_order_db');
+  });
+
+  afterEach(async () => {
+    await Order.deleteMany({});
+    nock.cleanAll();
+  });
+
+  afterAll(async () => {
+    await mongoose.disconnect();
+  });
+
+  describe('POST /api/orders', () => {
+    test('should create a new order', async () => {
+      // Mock customer service response
+      nock(process.env.CUSTOMER_SERVICE_URL)
+        .get('/api/customers/CUST001')
+        .reply(200, {
+          customerId: 'CUST001',
+          name: 'Test Customer'
+        });
+
+      // Mock product service response
+      nock(process.env.PRODUCT_SERVICE_URL)
+        .get('/api/products/PROD001')
+        .reply(200, {
+          productId: 'PROD001',
+          name: 'Test Product',
+          price: 100,
+          stock: 5
+        });
+
+      const orderData = {
+        customerId: 'CUST001',
+        items: [
+          { productId: 'PROD001', quantity: 2 }
+        ]
+      };
+
+      const response = await request(app)
+        .post('/api/orders')
+        .send(orderData)
+        .expect(201);
+
+      expect(response.body.customerId).toBe(orderData.customerId);
+      expect(response.body.items).toHaveLength(1);
+      expect(response.body.status).toBe('pending');
+    });
+
+    test('should return 404 for non-existent customer', async () => {
+      nock(process.env.CUSTOMER_SERVICE_URL)
+        .get('/api/customers/NONEXISTENT')
+        .reply(404, { message: 'Customer not found' });
+
+      const orderData = {
+        customerId: 'NONEXISTENT',
+        items: [
+          { productId: 'PROD001', quantity: 2 }
+        ]
+      };
+
+      const response = await request(app)
+        .post('/api/orders')
+        .send(orderData)
+        .expect(404);
+
+      expect(response.body.message).toMatch(/Customer not found/);
+    });
+
+    test('should return 404 for non-existent product', async () => {
+      nock(process.env.CUSTOMER_SERVICE_URL)
+        .get('/api/customers/CUST001')
+        .reply(200, {
+          customerId: 'CUST001',
+          name: 'Test Customer'
+        });
+
+      nock(process.env.PRODUCT_SERVICE_URL)
+        .get('/api/products/NONEXISTENT')
+        .reply(404, { message: 'Product not found' });
+
+      const orderData = {
+        customerId: 'CUST001',
+        items: [
+          { productId: 'NONEXISTENT', quantity: 2 }
+        ]
+      };
+
+      const response = await request(app)
+        .post('/api/orders')
+        .send(orderData)
+        .expect(404);
+
+      expect(response.body.message).toMatch(/Product not found/);
+    });
+  });
+
+  describe('GET /api/orders/:orderId', () => {
+    test('should return an order by ID', async () => {
+      const order = new Order({
+        customerId: 'CUST001',
+        items: [{ productId: 'PROD001', quantity: 2 }],
+        status: 'pending'
+      });
+      await order.save();
+
+      const response = await request(app)
+        .get(`/api/orders/${order._id}`)
+        .expect(200);
+
+      expect(response.body._id).toBe(order._id.toString());
+      expect(response.body.customerId).toBe(order.customerId);
+    });
+
+    test('should return 404 for non-existent order', async () => {
+      const nonExistentId = new mongoose.Types.ObjectId();
+      const response = await request(app)
+        .get(`/api/orders/${nonExistentId}`)
+        .expect(404);
+
+      expect(response.body.message).toMatch(/Order not found/);
+    });
+  });
+
+  describe('GET /api/orders/customer/:customerId', () => {
+    test('should return all orders for a customer', async () => {
+      const orders = [
+        { customerId: 'CUST001', items: [{ productId: 'PROD001', quantity: 1 }], status: 'pending' },
+        { customerId: 'CUST001', items: [{ productId: 'PROD002', quantity: 2 }], status: 'completed' }
+      ];
+
+      await Order.insertMany(orders);
+
+      const response = await request(app)
+        .get('/api/orders/customer/CUST001')
+        .expect(200);
+
+      expect(response.body).toHaveLength(2);
+      expect(response.body[0].customerId).toBe('CUST001');
+      expect(response.body[1].customerId).toBe('CUST001');
+    });
+
+    test('should return empty array for customer with no orders', async () => {
+      const response = await request(app)
+        .get('/api/orders/customer/NOCUST')
+        .expect(200);
+
+      expect(response.body).toEqual([]);
+    });
+  });
+});

@@ -1,23 +1,36 @@
 const request = require('supertest');
-const app = require('../../src/app');
+const app = require('../../services/order-service/src/app');
 const mongoose = require('mongoose');
-const Order = require('../../src/models/order');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const Order = require('../../services/order-service/src/models/order');
 const axios = require('axios');
+
+// Set test environment
+process.env.NODE_ENV = 'test';
 
 jest.mock('axios'); // Mock axios for integration tests as we don't want to call external services
 
 describe('Order Service Integration Tests', () => {
+  jest.setTimeout(30000); // Increase timeout to 30 seconds
+  let mongoServer;
+
   beforeAll(async () => {
-    await mongoose.connect(process.env.TEST_MONGODB_URI || 'mongodb://localhost:27017/test_order_db');
+    mongoServer = await MongoMemoryServer.create();
+    const mongoUri = mongoServer.getUri();
+    await mongoose.connect(mongoUri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
   });
 
-  afterEach(async () => {
+  beforeEach(async () => {
     await Order.deleteMany({});
     jest.clearAllMocks();
   });
 
   afterAll(async () => {
-    await mongoose.connection.close();
+    await mongoose.disconnect();
+    await mongoServer.stop();
   });
 
   test('POST /api/orders should create a new order', async () => {
@@ -73,7 +86,13 @@ describe('Order Service Integration Tests', () => {
       amount: 100,
     };
 
-    axios.get.mockResolvedValueOnce({ status: 404 }); // Mock customer not found
+    // Mock customer not found with error response
+    axios.get.mockRejectedValueOnce({
+      response: {
+        status: 404,
+        data: { message: 'Customer not found' }
+      }
+    });
 
     const response = await request(app)
       .post('/api/orders')
@@ -91,8 +110,13 @@ describe('Order Service Integration Tests', () => {
       amount: 100,
     };
 
-    axios.get.mockResolvedValueOnce({ status: 200, data: { customerId: newOrder.customerId } }); // Mock customer found
-    axios.get.mockResolvedValueOnce({ status: 404 }); // Mock product not found
+    axios.get.mockImplementationOnce(() => Promise.resolve({ status: 200, data: { customerId: newOrder.customerId } })); // Mock customer found
+    axios.get.mockImplementationOnce(() => Promise.reject({
+      response: {
+        status: 404,
+        data: { message: 'Product not found' }
+      }
+    })); // Mock product not found
 
     const response = await request(app)
       .post('/api/orders')
@@ -122,16 +146,16 @@ describe('Order Service Integration Tests', () => {
   });
 
   test('GET /api/orders/:orderId should return an order', async () => {
-    const order = await Order.create({
-      orderId: 'ORD001',
+    const testOrder = {
+      orderId: `ORD-${Date.now()}`,
       customerId: 'CUST001',
       productId: 'PROD001',
       quantity: 1,
       amount: 99.99,
-      orderStatus: 'completed',
-    });
-
-    const response = await request(app)
+      orderStatus: 'completed'
+    };
+    const order = new Order(testOrder);
+    await order.save();    const response = await request(app)
       .get(`/api/orders/${order.orderId}`)
       .expect(200);
 
@@ -149,22 +173,26 @@ describe('Order Service Integration Tests', () => {
 
   test('GET /api/orders/customer/:customerId should return orders for a customer', async () => {
     const customerId = 'CUST002';
-    await Order.create({
-      orderId: 'ORD002',
-      customerId,
-      productId: 'PROD002',
-      quantity: 1,
-      amount: 50.00,
-      orderStatus: 'pending',
-    });
-    await Order.create({
-      orderId: 'ORD003',
-      customerId,
-      productId: 'PROD003',
-      quantity: 2,
-      amount: 120.00,
-      orderStatus: 'completed',
-    });
+    const testOrders = [
+      new Order({
+        orderId: `ORD-${Date.now()}-1`,
+        customerId,
+        productId: 'PROD002',
+        quantity: 1,
+        amount: 50.00,
+        orderStatus: 'pending'
+      }),
+      new Order({
+        orderId: `ORD-${Date.now()}-2`,
+        customerId,
+        productId: 'PROD003',
+        quantity: 2,
+        amount: 120.00,
+        orderStatus: 'completed'
+      })
+    ];
+    
+    await Promise.all(testOrders.map(order => order.save()));
 
     const response = await request(app)
       .get(`/api/orders/customer/${customerId}`)

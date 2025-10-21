@@ -20,6 +20,11 @@ app.use(errorHandler);
 console.log('Payment Service started. Not connecting to a dedicated database, as it only publishes to RabbitMQ.');
 
 const PORT = process.env.PORT || 3004;
-app.listen(PORT, () => {
-  console.log(`Payment Service listening on port ${PORT}`);
-});
+// Only start the server if this file is being run directly
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Payment Service listening on port ${PORT}`);
+  });
+}
+
+module.exports = app;
