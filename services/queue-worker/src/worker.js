@@ -2,7 +2,7 @@ require('dotenv').config();
 const amqp = require('amqplib');
 const mongoose = require('mongoose');
 const Transaction = require('./models/transaction');
-const Order = require('./models/order');
+// Order model will be set globally after connection
 // Product model will be set globally after connection
 
 const RABBITMQ_URI = process.env.RABBITMQ_URI || 'amqp://localhost';
@@ -12,31 +12,51 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/transa
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 5000; // 5 seconds
 
+// Global variables for cleanup
+let connection;
+let channel;
+
 async function connectDB() {
   try {
-    // Connect to transaction database
-    await mongoose.connect(MONGODB_URI);
-    console.log('Connected to transaction_db');
-    
-    // Connect to product database
-    const productConnection = await mongoose.createConnection(process.env.MONGODB_URI_PRODUCT);
-    console.log('Connected to product_db');
-    
-    // Create Product model with product connection
-    const Product = productConnection.model('Product', require('./models/product').schema);
-    global.Product = Product;  // Make it available globally
-    
+    // In test environment, mongoose is already connected to the test database
+    if (process.env.NODE_ENV !== 'test') {
+      // Connect to transaction database
+      await mongoose.connect(MONGODB_URI);
+      console.log('Connected to transaction_db');
+      
+      // Connect to product database
+      const productConnection = await mongoose.createConnection(process.env.MONGODB_URI_PRODUCT);
+      console.log('Connected to product_db');
+      
+      // Connect to order database
+      const orderConnection = await mongoose.createConnection(process.env.MONGODB_URI_ORDER);
+      console.log('Connected to order_db');
+      
+      // Create Product model with product connection
+      const Product = productConnection.model('Product', require('./models/product').schema);
+      global.Product = Product;  // Make it available globally
+      
+      // Create Order model with order connection
+      const Order = orderConnection.model('Order', require('./models/order').schema);
+      global.Order = Order;  // Make it available globally
+    } else {
+      // For testing, use the same connection for all models
+      global.Product = mongoose.model('Product', require('./models/product').schema);
+      global.Order = mongoose.model('Order', require('./models/order').schema);
+    }
   } catch (error) {
     console.error('Could not connect to databases...', error);
-    process.exit(1);
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(1);
+    } else {
+      throw error;
+    }
   }
 }
 
 async function startWorker() {
   await connectDB();
 
-  let connection;
-  let channel;
   try {
     connection = await amqp.connect(RABBITMQ_URI);
     channel = await connection.createChannel();
@@ -71,25 +91,29 @@ async function startWorker() {
           // NOTE: In a real microservices setup, the Order Service would ideally listen for payment events
           // to update its own state, rather than the Queue Worker directly updating it.
           // For this example, we're simplifying by directly updating the Order model.
-          const order = await Order.findOneAndUpdate(
+          console.log(`Attempting to update order: ${orderId}`);
+          const order = await global.Order.findOneAndUpdate(
             { orderId: orderId },
             { orderStatus: 'completed', transactionId: transactionId },
             { new: true }
           );
-          console.log(order, "line 69")
-          if (order) {
-            console.log(`Order ${orderId} updated to completed.`);
-          } else {
-            console.warn(`Order ${orderId} not found for status update.`);
+          console.log('Order after update:', order)
+          if (!order) {
+            throw new Error(`Order ${orderId} not found for status update.`);
           }
+          console.log(`Order ${orderId} updated to completed.`);
 
           // Update product stock in product-service's database
           // Similar to order update, in a real system, product service would handle this via events.
-          await Product.findOneAndUpdate(
+          const product = await Product.findOneAndUpdate(
             { productId: productId },
             { $inc: { stock: -1 } },
             { new: true }
           );
+
+          if (!product) {
+            throw new Error(`Product ${productId} not found for stock update.`);
+          }
           console.log(`Product ${productId} stock updated.`);
 
           channel.ack(msg);
@@ -127,21 +151,56 @@ async function startWorker() {
   }
 }
 
-startWorker();
+// Only start the worker if this file is being run directly
+if (require.main === module) {
+  startWorker();
+}
+
+module.exports = {
+  startWorker,
+  shutdown,
+  connectDB
+};
 
 // Handle graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('Queue Worker shutting down...');
-  if (channel) await channel.close();
-  if (connection) await connection.close();
-  await mongoose.disconnect();
-  process.exit(0);
-});
+async function shutdown(signal) {
+  console.log(`Queue Worker shutting down... (${signal})`);
+  try {
+    // Wait for any in-progress operations to complete
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-process.on('SIGTERM', async () => {
-  console.log('Queue Worker shutting down...');
-  if (channel) await channel.close();
-  if (connection) await connection.close();
-  await mongoose.disconnect();
-  process.exit(0);
-});
+    if (channel) {
+      console.log('Closing RabbitMQ channel...');
+      await channel.close();
+    }
+    if (connection) {
+      console.log('Closing RabbitMQ connection...');
+      await connection.close();
+    }
+    console.log('Disconnecting from MongoDB...');
+    
+    // Close all connections in test environment
+    if (process.env.NODE_ENV === 'test') {
+      const connections = mongoose.connections;
+      await Promise.all(connections.map(conn => conn.close()));
+    }
+
+    await mongoose.disconnect();
+    console.log('Shutdown completed successfully');
+
+    // Only exit in non-test environment
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(0);
+    }
+  } catch (error) {
+    console.error('Error during shutdown:', error);
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(1);
+    } else {
+      throw error;
+    }
+  }
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

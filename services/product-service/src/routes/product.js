@@ -12,6 +12,6 @@ router.get('/:productId', productController.getProductById);
 router.get('/', productController.getAllProducts);
 
 
-router.put('/:productId/stock', productController.updateProductStock);
+router.patch('/:productId/stock', productController.updateProductStock);
 
 module.exports = router;

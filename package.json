@@ -4,6 +4,7 @@
   "description": "A comprehensive e-commerce microservices system",
   "main": "index.js",
   "scripts": {
+    "test:integration": "jest tests/integration --detectOpenHandles --forceExit --verbose",
     "start:customer": "cd services/customer-service && npm start",
     "start:product": "cd services/product-service && npm start",
     "start:order": "cd services/order-service && npm start",
@@ -34,6 +35,12 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "@types/jest": "^30.0.0",
+    "axios": "^1.12.2",
+    "jest": "^30.2.0",
+    "mongodb-memory-server": "^10.2.3",
+    "mongoose": "^8.19.1",
+    "nodemon": "^3.0.1",
+    "supertest": "^7.1.4"
   }
 }

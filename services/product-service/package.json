@@ -19,6 +19,13 @@
   "devDependencies": {
     "jest": "^29.7.0",
     "nodemon": "^3.0.1",
-    "supertest": "^6.3.3"
+    "supertest": "^6.3.3",
+    "mongodb-memory-server": "^8.12.2"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testTimeout": 10000,
+    "verbose": true,
+    "collectCoverage": true
   }
 }

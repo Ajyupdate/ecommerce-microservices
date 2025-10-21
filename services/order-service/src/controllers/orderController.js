@@ -9,34 +9,46 @@ const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost
 exports.createOrder = async (req, res, next) => {
   try {
     const { customerId, productId, quantity, amount } = req.body;
-    console.log(customerId, productId, quantity, amount)
     // 1. Validate request data (basic validation)
     if (!customerId || !productId || !quantity || !amount) {
-      const error = new Error('Missing required order fieldssss');
+      const error = new Error('Missing required order fields');
       error.statusCode = 400;
       throw error;
     }
 
     // 2. Call Customer Service to validate customer exists
-    const customerResponse = await axios.get(`${CUSTOMER_SERVICE_URL}/api/customers/${customerId}`);
-    if (customerResponse.status !== 200) {
-      const error = new Error('Customer not found');
-      error.statusCode = 404;
+    try {
+      const customerResponse = await axios.get(`${CUSTOMER_SERVICE_URL}/api/customers/${customerId}`);
+      if (customerResponse.status !== 200) {
+        const error = new Error('Customer not found');
+        error.statusCode = 404;
+        throw error;
+      }
+    } catch (error) {
+      if (error.response && error.response.status === 404) {
+        const notFoundError = new Error('Customer not found');
+        notFoundError.statusCode = 404;
+        throw notFoundError;
+      }
       throw error;
     }
 
     // 3. Call Product Service to validate product and check stock
-    const productResponse = await axios.get(`${PRODUCT_SERVICE_URL}/api/products/${productId}`);
-    if (productResponse.status !== 200) {
-      const error = new Error('Product not found');
-      error.statusCode = 404;
-      throw error;
-    }
-    const product = productResponse.data;
-
-    if (product.stock < quantity) {
-      const error = new Error('Insufficient product stock');
-      error.statusCode = 400;
+    try {
+      const productResponse = await axios.get(`${PRODUCT_SERVICE_URL}/api/products/${productId}`);
+      const product = productResponse.data;
+      
+      if (product.stock < quantity) {
+        const error = new Error('Insufficient product stock');
+        error.statusCode = 400;
+        throw error;
+      }
+    } catch (error) {
+      if (error.response && error.response.status === 404) {
+        const notFoundError = new Error('Product not found');
+        notFoundError.statusCode = 404;
+        throw notFoundError;
+      }
       throw error;
     }
 
@@ -61,13 +73,13 @@ exports.createOrder = async (req, res, next) => {
       orderId: newOrder.orderId,
       productId: newOrder.productId,
       amount: newOrder.amount,
-      paymentMethod: 'credit_card', // Default for demo
+      paymentMethod: 'credit_card', 
     }).catch(err => console.error('Payment service call failed:', err.message));
 
     // 6. Return order response to customer
     // Update orderStatus to 'successful' since the order is now successful
     console.log("successs 1 test")
-    // newOrder.orderStatus = 'completed';
+    newOrder.orderStatus = 'completed';
     await newOrder.save();
     res.status(201).json(newOrder);
   } catch (error) {
