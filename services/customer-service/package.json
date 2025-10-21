@@ -4,8 +4,8 @@
   "description": "Customer Microservice",
   "main": "src/app.js",
   "scripts": {
-    "start": "node src/app.js",
-    "dev": "nodemon src/app.js",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
     "test": "jest --config jest.config.js --forceExit --detectOpenHandles --verbose --coverage"
   },
   "keywords": [],
